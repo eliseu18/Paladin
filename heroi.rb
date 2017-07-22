@@ -7,44 +7,86 @@ class Heroi
   LIMITE_CORRIDA = 400
   FRICCAO = 0.7
   ELASTICIDADE = 0.2
+  attr_accessor :no_ar, :corpo
   def initialize(window, x, y)
     @window = window
-    espaco = window.space
-    @imagens = Gosu::Image.load_tiles()
+    espaco = window.espaco
+    @imagens = Gosu::Image.load_tiles('./imagens/esqueleto.png', 90, 100)
+    @ataque = Gosu::Image.load_tiles('./imagens/ataque_esqueleto.png', 100, 101)
+    @width = 100
     # Cria o corpo e suas dimensoes
-    @corpo = CP::Body.new(50, 50)
+    @corpo = CP::Body.new(50, 100 /0.0)
     # Define a localização do corpo
     @corpo.p = CP::Vec2.new(x, y)
     @corpo.v_limit = LIMITE_CORRIDA
     # Define os limites do corpo do heroi
-    limites = [CP::Vec2.new(-10, -32),
-                CP::Vec2.new(-10, 32),
-                CP::Vec2.new(10, 32),
-                CP::Vec2.new(10, -32)]
+    limites = [CP::Vec2.new(-22.1, -37.4),
+                CP::Vec2.new(-35.6, -17.4),
+                CP::Vec2.new(-42.4, 9.2),
+                CP::Vec2.new(-43.2, 19.1),
+                CP::Vec2.new(-4.1, 48.1),
+                CP::Vec2.new(37.2, 48),
+                CP::Vec2.new(35, 10.4),
+                CP::Vec2.new(2.8, -38.4),
+                CP::Vec2.new(-21.1, -37.5)]
     forma = CP::Shape::Poly.new(@corpo, limites, CP::Vec2.new(0,0))
     forma.u = FRICCAO
     forma.e = ELASTICIDADE
     espaco.add_body(@corpo)
     espaco.add_shape(forma)
     # Variavel para definir a ação do heroi a cada tempo.
-    @acao = :parado
+    @acao = :parado_direita
     @imagem_index = 0
+    @ataque_index = 0
+    @ataque_fim =
     # Variavel para verificar se o personagem esta no ar.
     @no_ar = true
+    @direita = window.direita
+    @life = 100
+    @invuneravel = false
+    @tempo_invuneravel = 0
+  end
+  def update(ato, lobsomen, chao)
+    # Checar pes, checa se o jogador esta pisando no chao ou sobre algum monstro
+    checar_invuneravel
+    checar_pes([chao,lobsomen])
+    if ato == "direita"
+      mover_direita
+    elsif ato == "esquerda"
+      mover_esquerda
+    elsif ato == "ataque"
+      ataque
+      lobsomen.atingido(true,@direita) if colisao_ataque(lobsomen)
+    else
+      # Caso ele não precione nada, a função parado e chamado.
+      parado unless no_ar
+    end
+    recebeu_ataque(true,lobsomen.direcao) if colisao(lobsomen)
   end
   # Metodo que desenha o heroi dependendo da acao dele
   def draw
-    case @action
+    case @acao
     when :corre_direita
-      @imagens[@imagem_index].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
-      @imagem_index = (@imagem_index + 0.2) % 7
-    when :parado, :pula_direita
-      @imagens[0].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
-    when :corre_esquerda
-      @imagens[@imagem_index].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0, 0.5, 0.5, -1, 1)
-      @imagem_index = (@imagem_index + 0.2) % 7
-    when :pula_esquerda
+      @imagens[Gosu.milliseconds / 100 % @imagens.size].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0, 0.5, 0.5, -1, 1)
+      ##@imagem_index = (@imagem_index + 0.2) % 3
+      @direita = true
+    when :parado_direita, :pula_direita
       @imagens[0].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0, 0.5, 0.5, -1, 1)
+      @direita = true
+    when :corre_esquerda
+      @imagens[Gosu.milliseconds / 100 % @imagens.size].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
+      ##@imagem_index = (@imagem_index + 0.2) % 3
+      @direita = false
+    when :pula_esquerda
+      @imagens[0].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
+      @direita = false
+    when :ataque_direita
+        @ataque[Gosu.milliseconds / 100 % @ataque.size].draw_rot(@corpo.p.x,@corpo.p.y, 2,0, 0.5, 0.5, -1, 1)
+        @ataque_index = (@imagem_index - 0.05) % 3
+        @direita = true
+    when :ataque_esquerda
+      @ataque[Gosu.milliseconds / 100 % @ataque.size].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
+        @direita = false
     else
       @imagens[0].draw_rot(@corpo.p.x, @corpo.p.y, 2, 0)
     end
@@ -52,8 +94,8 @@ class Heroi
   # Metodo que calcula a distancia entre o corpo e um objeto e retorna se estao
   # tocando ou não (true ou false)
   def tocando?(pes)
-    x_diff = (@corpo.p.x - pes.body.p.x).abs
-    y_diff = (@corpo.p.y - pes.body.p.y).abs
+    x_diff = (@corpo.p.x - pes.corpo.p.x).abs
+    y_diff = (@corpo.p.y + 50 - pes.corpo.p.y).abs
     x_diff < 12 + pes.width/2 and y_diff < 5 + pes.height / 2
   end
   # Metodo que verifica cada objeto se ele esta tocando o heroi.
@@ -61,9 +103,6 @@ class Heroi
     @no_ar = true
     objetos.each do |objeto|
       @no_ar = false if tocando?(objeto)
-    end
-    if @corpo.p.y > 765
-      @no_ar = false
     end
   end
   # metodo para mover o personagem a direita
@@ -76,7 +115,7 @@ class Heroi
       @corpo.apply_impulse(CP::Vec2.new(IMPULSO_NO_AR, 0), CP::Vec2.new(0,0))
     else
       @acao = :corre_direita
-      @corpo.apply_impulse(CP::Vec2.new(IMPULSO_CORRIDA), CP::Vec2.new(0, 0))
+      @corpo.apply_impulse(CP::Vec2.new(IMPULSO_CORRIDA, 0), CP::Vec2.new(0, 0))
     end
   end
   # Metodo para mover o personagem a esquerda
@@ -100,16 +139,70 @@ class Heroi
                             CP::Vec2.new(0, 0))
     else
       @corpo.apply_impulse(CP::Vec2.new(0, -IMPULSO_PULO), CP::Vec2.new(0, 0))
-      if @action == :esquerda
-        @action = :pula_esquerda
+      if @acao == :esquerda
+        @acao = :pula_esquerda
       else
-        @action = :pula_direita
+        @acao = :pula_direita
       end
     end
   end
   # Metodo que define a acao de ficar parado, caso ele esteja no ar, ele não ficar
   #parado.
   def parado
-    @action = :parado unless no_ar
+    if @direita
+      @acao = :parado_direita
+    else
+      @acao = :parado_esquerda
+    end
+  end
+
+  def ataque
+    if !@direita
+      @acao = :ataque_esquerda
+    else
+      @acao = :ataque_direita
+    end
+  end
+
+  def recebeu_ataque(valor, direcao)
+    if valor
+      if !@invuneravel
+        @life = @life - 10
+        if @direita
+          @corpo.apply_impulse(CP::Vec2.new(-6000, -3000), CP::Vec2.new(0,0))
+        else
+          @corpo.apply_impulse(CP::Vec2.new(6000, -3000), CP::Vec2.new(0,0))
+        end
+        @invuneravel = true
+        @tempo_invuneravel = Gosu.milliseconds
+      end
+    end
+  end
+  def life
+    return @life
+  end
+  def colisao(monstro)
+      distancia = Gosu.distance(monstro.retorne_x, monstro.retorne_y, @corpo.p.x, @corpo.p.y)
+      if distancia < @width/2 + monstro.width/2
+        return true
+      else
+        return false
+      end
+  end
+  def colisao_ataque(monstro)
+      distancia = Gosu.distance(monstro.retorne_x, monstro.retorne_y, @corpo.p.x, @corpo.p.y)-10
+      if distancia < @width/2 + monstro.width/2
+        return true
+      else
+        return false
+      end
+  end
+  def checar_invuneravel
+    if @invuneravel
+      tempo = Gosu.milliseconds
+      if  Gosu.milliseconds - @tempo_invuneravel > 3000
+        @invuneravel = false
+      end
+    end
   end
 end

@@ -1,8 +1,9 @@
 class Borda
   FRICCAO = 0.7
   ELASTICIDADE = 0.2
+  attr_reader :corpo, :width, :height
   def initialize(window, x, y, width, height)
-    espaco = window.space
+    espaco = window.espaco
     # Coordenadas do centro do objeto
     @x = x
     @y = y
